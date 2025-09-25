@@ -1,0 +1,194 @@
+# Node.js Build and Test Pipeline Template
+#
+# This reusable workflow template builds and tests Node.js applications with configurable parameters.
+# Supports npm and yarn package managers, multiple Node.js versions, and custom script execution.
+#
+# Usage:
+#   1. Reference this template in your workflow
+#   2. Configure the required and optional parameters
+#   3. Template handles package installation, build, and test steps automatically
+#
+# Parameters:
+#   - node-version: Node.js version to use (required)
+#   - package-manager: Package manager to use (npm/yarn, default: npm)
+#   - install-script: Custom install command (optional)
+#   - build-script: Build script name (default: build)
+#   - test-script: Test script name (default: test)
+#   - lint-script: Lint script name (optional)
+#   - cache-dependency-path: Path to lock file for caching (auto-detected)
+
+name: Node.js Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: true
+        type: string
+      package-manager:
+        description: 'Package manager to use (npm or yarn)'
+        required: false
+        type: string
+        default: 'npm'
+      install-script:
+        description: 'Custom install command (overrides default package manager install)'
+        required: false
+        type: string
+        default: ''
+      build-script:
+        description: 'Build script name in package.json'
+        required: false
+        type: string
+        default: 'build'
+      test-script:
+        description: 'Test script name in package.json'
+        required: false
+        type: string
+        default: 'test'
+      lint-script:
+        description: 'Lint script name in package.json (optional)'
+        required: false
+        type: string
+        default: ''
+      cache-dependency-path:
+        description: 'Path to lock file for caching (auto-detected if not provided)'
+        required: false
+        type: string
+        default: ''
+      working-directory:
+        description: 'Working directory for the project'
+        required: false
+        type: string
+        default: './'
+      run-build:
+        description: 'Whether to run build step'
+        required: false
+        type: boolean
+        default: true
+      run-tests:
+        description: 'Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+      run-lint:
+        description: 'Whether to run linting (requires lint-script to be set)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Checkout repository code
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    # Setup Node.js environment with specified version
+    - name: Setup Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        # Auto-detect cache dependency path if not provided
+        cache: ${{ inputs.package-manager }}
+        cache-dependency-path: |
+          ${{ inputs.cache-dependency-path != '' && inputs.cache-dependency-path || 
+              (inputs.package-manager == 'yarn' && format('{0}/yarn.lock', inputs.working-directory) || 
+               format('{0}/package-lock.json', inputs.working-directory)) }}
+        
+    # Display Node.js and package manager versions for debugging
+    - name: Display versions
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        node --version
+        npm --version
+        if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if ! command -v yarn &> /dev/null; then
+            npm install -g yarn
+          fi
+          yarn --version
+        fi
+        
+    # Install dependencies
+    - name: Install dependencies
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ -n "${{ inputs.install-script }}" ]; then
+          echo "Running custom install script: ${{ inputs.install-script }}"
+          ${{ inputs.install-script }}
+        elif [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          echo "Installing dependencies with Yarn"
+          yarn install --frozen-lockfile
+        else
+          echo "Installing dependencies with npm"
+          npm ci
+        fi
+        
+    # Run linting if enabled and lint script is provided
+    - name: Run linting
+      if: ${{ inputs.run-lint && inputs.lint-script != '' }}
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          yarn run ${{ inputs.lint-script }}
+        else
+          npm run ${{ inputs.lint-script }}
+        fi
+        
+    # Build the project if enabled
+    - name: Build project
+      if: ${{ inputs.run-build }}
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        # Check if build script exists in package.json
+        if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if yarn run --help 2>/dev/null | grep -q "${{ inputs.build-script }}"; then
+            echo "Running build with Yarn"
+            yarn run ${{ inputs.build-script }}
+          else
+            echo "Build script '${{ inputs.build-script }}' not found in package.json, skipping build"
+          fi
+        else
+          if npm run --help 2>/dev/null | grep -q "${{ inputs.build-script }}" || npm run 2>&1 | grep -q "${{ inputs.build-script }}"; then
+            echo "Running build with npm"
+            npm run ${{ inputs.build-script }}
+          else
+            echo "Build script '${{ inputs.build-script }}' not found in package.json, skipping build"
+          fi
+        fi
+        
+    # Run tests if enabled
+    - name: Run tests
+      if: ${{ inputs.run-tests }}
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        # Check if test script exists in package.json
+        if [ "${{ inputs.package-manager }}" = "yarn" ]; then
+          if yarn run --help 2>/dev/null | grep -q "${{ inputs.test-script }}"; then
+            echo "Running tests with Yarn"
+            yarn run ${{ inputs.test-script }}
+          else
+            echo "Test script '${{ inputs.test-script }}' not found in package.json, skipping tests"
+          fi
+        else
+          if npm run --help 2>/dev/null | grep -q "${{ inputs.test-script }}" || npm run 2>&1 | grep -q "${{ inputs.test-script }}"; then
+            echo "Running tests with npm"
+            npm run ${{ inputs.test-script }}
+          else
+            echo "Test script '${{ inputs.test-script }}' not found in package.json, skipping tests"
+          fi
+        fi
+        
+    # Upload build artifacts if build directory exists
+    - name: Upload build artifacts
+      if: ${{ inputs.run-build && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts-node-${{ inputs.node-version }}
+        path: |
+          ${{ inputs.working-directory }}/dist/
+          ${{ inputs.working-directory }}/build/
+          ${{ inputs.working-directory }}/out/
+        if-no-files-found: ignore

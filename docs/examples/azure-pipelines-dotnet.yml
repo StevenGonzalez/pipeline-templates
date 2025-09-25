@@ -1,0 +1,81 @@
+# Example: Azure Pipelines using the .NET template
+# This demonstrates how to use the .NET build and test template in Azure DevOps
+
+trigger:
+- main
+- develop
+
+pr:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# Example 1: Basic usage
+jobs:
+- template: ../../templates/azure-pipelines/dotnet-build-test.yml
+  parameters:
+    dotnetVersion: '8.0.x'
+    buildConfiguration: 'Release'
+    solutionPath: '**/*.sln'
+    enableCodeCoverage: true
+    runTests: true
+
+# Example 2: Multi-configuration build
+- job: MultiConfigBuild
+  displayName: 'Multi-Configuration Build'
+  strategy:
+    matrix:
+      Debug:
+        buildConfiguration: 'Debug'
+        dotnetVersion: '8.0.x'
+      Release:
+        buildConfiguration: 'Release'  
+        dotnetVersion: '8.0.x'
+  steps:
+  - template: ../../templates/azure-pipelines/dotnet-build-test.yml
+    parameters:
+      dotnetVersion: $(dotnetVersion)
+      buildConfiguration: $(buildConfiguration)
+      vmImage: 'ubuntu-latest'
+
+# Example 3: Cross-platform testing
+- job: CrossPlatformTest
+  displayName: 'Cross-Platform Testing'
+  strategy:
+    matrix:
+      Linux:
+        vmImage: 'ubuntu-latest'
+        dotnetVersion: '8.0.x'
+      Windows:
+        vmImage: 'windows-latest'
+        dotnetVersion: '8.0.x'
+      macOS:
+        vmImage: 'macOS-latest'
+        dotnetVersion: '8.0.x'
+  steps:
+  - template: ../../templates/azure-pipelines/dotnet-build-test.yml
+    parameters:
+      dotnetVersion: $(dotnetVersion)
+      buildConfiguration: 'Release'
+      vmImage: $(vmImage)
+
+# Example 4: Custom solution path and test configuration
+- template: ../../templates/azure-pipelines/dotnet-build-test.yml
+  parameters:
+    dotnetVersion: '8.0.x'
+    buildConfiguration: 'Debug'
+    solutionPath: './src/MyApp.sln'
+    testResultsPath: '$(Agent.TempDirectory)/CustomTestResults'
+    enableCodeCoverage: false
+    runTests: true
+    vmImage: 'ubuntu-latest'
+
+# Example 5: Build-only job (no tests)
+- template: ../../templates/azure-pipelines/dotnet-build-test.yml
+  parameters:
+    dotnetVersion: '8.0.x'
+    buildConfiguration: 'Release'
+    solutionPath: '**/*.sln'
+    runTests: false
+    vmImage: 'ubuntu-latest'

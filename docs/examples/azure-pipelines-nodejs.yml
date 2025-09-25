@@ -1,0 +1,118 @@
+# Example: Azure Pipelines using the Node.js template
+# This demonstrates how to use the Node.js build and test template in Azure DevOps
+
+trigger:
+- main
+- develop
+
+pr:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# Example 1: Basic npm usage
+jobs:
+- template: ../../templates/azure-pipelines/nodejs-build-test.yml
+  parameters:
+    nodeVersion: '18.x'
+    packageManager: 'npm'
+    buildScript: 'build'
+    testScript: 'test'
+    runBuild: true
+    runTests: true
+
+# Example 2: Yarn with linting
+- template: ../../templates/azure-pipelines/nodejs-build-test.yml
+  parameters:
+    nodeVersion: '20.x'
+    packageManager: 'yarn'
+    buildScript: 'build:prod'
+    testScript: 'test:ci'
+    lintScript: 'lint'
+    runLint: true
+    runBuild: true
+    runTests: true
+
+# Example 3: Multi-version Node.js testing
+- job: MultiNodeVersions
+  displayName: 'Test Multiple Node.js Versions'
+  strategy:
+    matrix:
+      Node16_NPM:
+        nodeVersion: '16.x'
+        packageManager: 'npm'
+      Node18_NPM:
+        nodeVersion: '18.x'
+        packageManager: 'npm'
+      Node20_Yarn:
+        nodeVersion: '20.x'
+        packageManager: 'yarn'
+  steps:
+  - template: ../../templates/azure-pipelines/nodejs-build-test.yml
+    parameters:
+      nodeVersion: $(nodeVersion)
+      packageManager: $(packageManager)
+      buildScript: 'build'
+      testScript: 'test'
+      runBuild: true
+      runTests: true
+
+# Example 4: Cross-platform Node.js testing
+- job: CrossPlatformNode
+  displayName: 'Cross-Platform Node.js Testing'
+  strategy:
+    matrix:
+      Linux:
+        vmImage: 'ubuntu-latest'
+      Windows:
+        vmImage: 'windows-latest'
+      macOS:
+        vmImage: 'macOS-latest'
+  steps:
+  - template: ../../templates/azure-pipelines/nodejs-build-test.yml
+    parameters:
+      nodeVersion: '18.x'
+      packageManager: 'npm'
+      buildScript: 'build'
+      testScript: 'test'
+      vmImage: $(vmImage)
+      runBuild: true
+      runTests: true
+
+# Example 5: Monorepo with custom working directory
+- template: ../../templates/azure-pipelines/nodejs-build-test.yml
+  parameters:
+    nodeVersion: '18.x'
+    packageManager: 'npm'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/packages/frontend'
+    buildScript: 'build'
+    testScript: 'test:unit'
+    lintScript: 'lint:fix'
+    runLint: true
+    runBuild: true
+    runTests: true
+
+# Example 6: Custom scripts and configuration
+- template: ../../templates/azure-pipelines/nodejs-build-test.yml
+  parameters:
+    nodeVersion: '18.x'
+    packageManager: 'npm'
+    buildScript: 'compile'
+    testScript: 'test:coverage'
+    lintScript: 'eslint'
+    workingDirectory: '$(System.DefaultWorkingDirectory)'
+    runBuild: true
+    runTests: true
+    runLint: true
+    vmImage: 'ubuntu-latest'
+
+# Example 7: Build-only job for documentation
+- template: ../../templates/azure-pipelines/nodejs-build-test.yml
+  parameters:
+    nodeVersion: '18.x'
+    packageManager: 'npm'
+    buildScript: 'build:docs'
+    runTests: false
+    runBuild: true
+    vmImage: 'ubuntu-latest'

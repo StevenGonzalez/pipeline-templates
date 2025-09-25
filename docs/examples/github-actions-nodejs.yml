@@ -1,0 +1,101 @@
+# Example: GitHub Actions workflow using the Node.js template
+# This demonstrates how to use the Node.js build and test template in a real project
+
+name: Node.js CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # Example 1: Basic npm usage
+  basic-npm-build:
+    name: Basic NPM Build and Test
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: '18.x'
+      package-manager: 'npm'
+      build-script: 'build'
+      test-script: 'test'
+
+  # Example 2: Yarn with linting
+  yarn-with-lint:
+    name: Yarn Build with Linting
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'yarn'
+      build-script: 'build:prod'
+      test-script: 'test:ci'
+      lint-script: 'lint'
+      run-lint: true
+
+  # Example 3: Multi-version Node.js testing
+  multi-node-version:
+    name: Test Multiple Node Versions
+    strategy:
+      matrix:
+        node-version: ['16.x', '18.x', '20.x']
+        package-manager: ['npm', 'yarn']
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: ${{ matrix.node-version }}
+      package-manager: ${{ matrix.package-manager }}
+      run-build: true
+      run-tests: true
+
+  # Example 4: Monorepo frontend project
+  frontend-monorepo:
+    name: Frontend in Monorepo
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: '18.x'
+      package-manager: 'npm'
+      working-directory: './packages/frontend'
+      build-script: 'build'
+      test-script: 'test:unit'
+      lint-script: 'lint:fix'
+      run-lint: true
+
+  # Example 5: Custom scripts and configuration
+  custom-scripts:
+    name: Custom Build Configuration
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: '18.x'
+      package-manager: 'npm'
+      build-script: 'compile'
+      test-script: 'test:coverage'
+      lint-script: 'eslint'
+      cache-dependency-path: './package-lock.json'
+      run-build: true
+      run-tests: true
+      run-lint: true
+
+  # Example 6: Build only (no tests)
+  build-only:
+    name: Build Only for Documentation
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: '18.x'
+      package-manager: 'npm'
+      build-script: 'build:docs'
+      run-tests: false
+      run-build: true
+
+  # Example 7: Testing with specific working directory
+  api-service:
+    name: API Service Build
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/nodejs-build-test.yml@main
+    with:
+      node-version: '20.x'
+      package-manager: 'yarn'
+      working-directory: './services/api'
+      build-script: 'build'
+      test-script: 'test:unit'
+      lint-script: 'lint'
+      run-lint: true
+      run-build: true
+      run-tests: true
