@@ -1,0 +1,61 @@
+# Example: GitHub Actions workflow using the .NET template
+# This demonstrates how to use the .NET build and test template in a real project
+
+name: .NET CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+# Example 1: Basic usage
+jobs:
+  basic-build:
+    name: Basic Build and Test
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/dotnet-build-test.yml@main
+    with:
+      dotnet-version: '8.0.x'
+      build-configuration: 'Release'
+
+  # Example 2: Multi-version testing
+  multi-version-test:
+    name: Test Multiple .NET Versions
+    strategy:
+      matrix:
+        dotnet-version: ['6.0.x', '7.0.x', '8.0.x']
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/dotnet-build-test.yml@main
+    with:
+      dotnet-version: ${{ matrix.dotnet-version }}
+      build-configuration: 'Release'
+      enable-code-coverage: true
+
+  # Example 3: Custom solution path and test configuration
+  custom-configuration:
+    name: Custom Configuration
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/dotnet-build-test.yml@main
+    with:
+      dotnet-version: '8.0.x'
+      build-configuration: 'Debug'
+      solution-path: './src/MyApp.sln'
+      test-results-path: './test-output/'
+      enable-code-coverage: false
+      run-tests: true
+
+  # Example 4: Conditional execution based on file changes
+  conditional-build:
+    name: Build Only on Code Changes
+    # First, detect if .NET files changed
+    if: contains(github.event.head_commit.modified, '.cs') || contains(github.event.head_commit.modified, '.csproj')
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/dotnet-build-test.yml@main
+    with:
+      dotnet-version: '8.0.x'
+
+  # Example 5: Build without tests (compilation check only)
+  build-only:
+    name: Build Without Tests
+    uses: StevenGonzalez/pipeline-templates/.github/workflows/dotnet-build-test.yml@main
+    with:
+      dotnet-version: '8.0.x'
+      build-configuration: 'Release'
+      run-tests: false

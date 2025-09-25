@@ -1,0 +1,212 @@
+# Node.js Build and Test Pipeline Template for Azure DevOps
+#
+# This template provides a reusable pipeline for building and testing Node.js applications.
+# Supports npm and yarn package managers, multiple Node.js versions, and custom script execution.
+#
+# Usage:
+#   - template: templates/azure-pipelines/nodejs-build-test.yml
+#     parameters:
+#       nodeVersion: '18.x'
+#       packageManager: 'npm'
+#
+# Parameters:
+#   - nodeVersion: Node.js version to use (required)
+#   - packageManager: Package manager to use (npm/yarn, default: npm)
+#   - buildScript: Build script name (default: build)
+#   - testScript: Test script name (default: test)
+#   - lintScript: Lint script name (optional)
+#   - workingDirectory: Working directory (default: $(System.DefaultWorkingDirectory))
+#   - runBuild: Whether to run build step (default: true)
+#   - runTests: Whether to run tests (default: true)
+#   - runLint: Whether to run linting (default: false)
+#   - vmImage: VM image to use (default: ubuntu-latest)
+
+parameters:
+- name: nodeVersion
+  type: string
+  displayName: 'Node.js version to use'
+  
+- name: packageManager
+  type: string
+  displayName: 'Package manager'
+  default: 'npm'
+  values:
+  - npm
+  - yarn
+  
+- name: buildScript
+  type: string
+  displayName: 'Build script name'
+  default: 'build'
+  
+- name: testScript
+  type: string
+  displayName: 'Test script name'
+  default: 'test'
+  
+- name: lintScript
+  type: string
+  displayName: 'Lint script name (optional)'
+  default: ''
+  
+- name: workingDirectory
+  type: string
+  displayName: 'Working directory'
+  default: '$(System.DefaultWorkingDirectory)'
+  
+- name: runBuild
+  type: boolean
+  displayName: 'Run build step'
+  default: true
+  
+- name: runTests
+  type: boolean
+  displayName: 'Run tests'
+  default: true
+  
+- name: runLint
+  type: boolean
+  displayName: 'Run linting'
+  default: false
+  
+- name: vmImage
+  type: string
+  displayName: 'VM image to use'
+  default: 'ubuntu-latest'
+  values:
+  - ubuntu-latest
+  - windows-latest
+  - macOS-latest
+
+jobs:
+- job: BuildAndTest
+  displayName: 'Build and Test Node.js Application'
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+    
+  variables:
+    # Disable npm update notifications
+    NPM_CONFIG_UPDATE_NOTIFIER: false
+    
+  steps:
+  # Setup Node.js environment
+  - task: NodeTool@0
+    displayName: 'Setup Node.js ${{ parameters.nodeVersion }}'
+    inputs:
+      versionSpec: ${{ parameters.nodeVersion }}
+      
+  # Display Node.js and npm versions for debugging
+  - script: |
+      node --version
+      npm --version
+    displayName: 'Display Node.js info'
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Setup Yarn if using yarn
+  - script: |
+      if ! command -v yarn &> /dev/null; then
+        npm install -g yarn
+      fi
+      yarn --version
+    displayName: 'Setup Yarn'
+    condition: eq('${{ parameters.packageManager }}', 'yarn')
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Cache npm packages
+  - task: Cache@2
+    displayName: 'Cache npm packages'
+    condition: eq('${{ parameters.packageManager }}', 'npm')
+    inputs:
+      key: 'npm | "$(Agent.OS)" | ${{ parameters.workingDirectory }}/package-lock.json'
+      restoreKeys: |
+        npm | "$(Agent.OS)"
+        npm
+      path: ~/.npm
+      
+  # Cache yarn packages
+  - task: Cache@2
+    displayName: 'Cache yarn packages'
+    condition: eq('${{ parameters.packageManager }}', 'yarn')
+    inputs:
+      key: 'yarn | "$(Agent.OS)" | ${{ parameters.workingDirectory }}/yarn.lock'
+      restoreKeys: |
+        yarn | "$(Agent.OS)"
+        yarn
+      path: ~/.yarn
+      
+  # Install dependencies with npm
+  - script: npm ci
+    displayName: 'Install dependencies (npm)'
+    condition: eq('${{ parameters.packageManager }}', 'npm')
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Install dependencies with yarn
+  - script: yarn install --frozen-lockfile
+    displayName: 'Install dependencies (yarn)'
+    condition: eq('${{ parameters.packageManager }}', 'yarn')
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Run linting if enabled and lint script is provided
+  - script: |
+      if [ "${{ parameters.packageManager }}" = "yarn" ]; then
+        yarn run ${{ parameters.lintScript }}
+      else
+        npm run ${{ parameters.lintScript }}
+      fi
+    displayName: 'Run linting'
+    condition: and(eq('${{ parameters.runLint }}', true), ne('${{ parameters.lintScript }}', ''))
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Build the project if enabled
+  - script: |
+      if [ "${{ parameters.packageManager }}" = "yarn" ]; then
+        if yarn run --help 2>/dev/null | grep -q "${{ parameters.buildScript }}"; then
+          echo "Running build with Yarn"
+          yarn run ${{ parameters.buildScript }}
+        else
+          echo "Build script '${{ parameters.buildScript }}' not found in package.json, skipping build"
+        fi
+      else
+        if npm run 2>&1 | grep -q "${{ parameters.buildScript }}"; then
+          echo "Running build with npm"
+          npm run ${{ parameters.buildScript }}
+        else
+          echo "Build script '${{ parameters.buildScript }}' not found in package.json, skipping build"
+        fi
+      fi
+    displayName: 'Build project'
+    condition: eq('${{ parameters.runBuild }}', true)
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Run tests if enabled
+  - script: |
+      if [ "${{ parameters.packageManager }}" = "yarn" ]; then
+        if yarn run --help 2>/dev/null | grep -q "${{ parameters.testScript }}"; then
+          echo "Running tests with Yarn"
+          yarn run ${{ parameters.testScript }}
+        else
+          echo "Test script '${{ parameters.testScript }}' not found in package.json, skipping tests"
+        fi
+      else
+        if npm run 2>&1 | grep -q "${{ parameters.testScript }}"; then
+          echo "Running tests with npm"
+          npm run ${{ parameters.testScript }}
+        else
+          echo "Test script '${{ parameters.testScript }}' not found in package.json, skipping tests"
+        fi
+      fi
+    displayName: 'Run tests'
+    condition: eq('${{ parameters.runTests }}', true)
+    workingDirectory: ${{ parameters.workingDirectory }}
+    
+  # Publish build artifacts if build directory exists
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish build artifacts'
+    condition: and(always(), eq('${{ parameters.runBuild }}', true))
+    inputs:
+      targetPath: |
+        ${{ parameters.workingDirectory }}/dist
+        ${{ parameters.workingDirectory }}/build
+        ${{ parameters.workingDirectory }}/out
+      artifactName: 'build-artifacts-node-${{ parameters.nodeVersion }}'
+    continueOnError: true

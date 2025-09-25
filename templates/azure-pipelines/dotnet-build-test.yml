@@ -1,0 +1,137 @@
+# .NET Build and Test Pipeline Template for Azure DevOps
+#
+# This template provides a reusable pipeline for building and testing .NET applications.
+# Supports multiple .NET versions, custom build configurations, and flexible test execution.
+#
+# Usage:
+#   - template: templates/azure-pipelines/dotnet-build-test.yml
+#     parameters:
+#       dotnetVersion: '8.0.x'
+#       buildConfiguration: 'Release'
+#
+# Parameters:
+#   - dotnetVersion: .NET version to use (required)
+#   - buildConfiguration: Build configuration (default: Release)
+#   - solutionPath: Path to solution file (default: **/*.sln)
+#   - testResultsPath: Path for test results (default: $(Agent.TempDirectory)/TestResults)
+#   - enableCodeCoverage: Enable code coverage collection (default: true)
+#   - runTests: Whether to run tests (default: true)
+#   - vmImage: VM image to use (default: ubuntu-latest)
+
+parameters:
+- name: dotnetVersion
+  type: string
+  displayName: '.NET version to use'
+  
+- name: buildConfiguration
+  type: string
+  displayName: 'Build configuration'
+  default: 'Release'
+  values:
+  - Debug
+  - Release
+  
+- name: solutionPath
+  type: string
+  displayName: 'Path to solution or project files'
+  default: '**/*.sln'
+  
+- name: testResultsPath
+  type: string
+  displayName: 'Path for test results'
+  default: '$(Agent.TempDirectory)/TestResults'
+  
+- name: enableCodeCoverage
+  type: boolean
+  displayName: 'Enable code coverage collection'
+  default: true
+  
+- name: runTests
+  type: boolean
+  displayName: 'Run tests'
+  default: true
+  
+- name: vmImage
+  type: string
+  displayName: 'VM image to use'
+  default: 'ubuntu-latest'
+  values:
+  - ubuntu-latest
+  - windows-latest
+  - macOS-latest
+
+jobs:
+- job: BuildAndTest
+  displayName: 'Build and Test .NET Application'
+  pool:
+    vmImage: ${{ parameters.vmImage }}
+    
+  variables:
+    # Build configuration
+    buildConfiguration: ${{ parameters.buildConfiguration }}
+    # Disable .NET telemetry
+    DOTNET_CLI_TELEMETRY_OPTOUT: true
+    # Skip first time experience
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+    
+  steps:
+  # Setup .NET environment
+  - task: UseDotNet@2
+    displayName: 'Setup .NET ${{ parameters.dotnetVersion }}'
+    inputs:
+      packageType: 'sdk'
+      version: ${{ parameters.dotnetVersion }}
+      includePreviewVersions: false
+      
+  # Display .NET information for debugging
+  - script: dotnet --info
+    displayName: 'Display .NET info'
+    
+  # Restore NuGet packages
+  - task: DotNetCoreCLI@2
+    displayName: 'Restore packages'
+    inputs:
+      command: 'restore'
+      projects: ${{ parameters.solutionPath }}
+      feedsToUse: 'select'
+      
+  # Build the solution/project
+  - task: DotNetCoreCLI@2
+    displayName: 'Build solution'
+    inputs:
+      command: 'build'
+      projects: ${{ parameters.solutionPath }}
+      arguments: '--configuration $(buildConfiguration) --no-restore'
+      
+  # Run tests with code coverage if enabled
+  - task: DotNetCoreCLI@2
+    displayName: 'Run tests'
+    condition: eq('${{ parameters.runTests }}', true)
+    inputs:
+      command: 'test'
+      projects: ${{ parameters.solutionPath }}
+      arguments: >
+        --configuration $(buildConfiguration)
+        --no-build
+        --logger trx
+        --results-directory ${{ parameters.testResultsPath }}
+        ${{ eq(parameters.enableCodeCoverage, true) && '--collect "Code coverage"' || '' }}
+      publishTestResults: true
+      
+  # Publish test results
+  - task: PublishTestResults@2
+    displayName: 'Publish test results'
+    condition: and(always(), eq('${{ parameters.runTests }}', true))
+    inputs:
+      testResultsFormat: 'VSTest'
+      testResultsFiles: '${{ parameters.testResultsPath }}/**/*.trx'
+      failTaskOnFailedTests: true
+      
+  # Publish code coverage results if enabled
+  - task: PublishCodeCoverageResults@2
+    displayName: 'Publish code coverage'
+    condition: and(always(), eq('${{ parameters.runTests }}', true), eq('${{ parameters.enableCodeCoverage }}', true))
+    inputs:
+      codeCoverageTool: 'Cobertura'
+      summaryFileLocation: '${{ parameters.testResultsPath }}/**/coverage.cobertura.xml'
+      failIfCoverageEmpty: false

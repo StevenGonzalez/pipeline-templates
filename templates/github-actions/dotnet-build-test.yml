@@ -1,0 +1,113 @@
+# .NET Build and Test Pipeline Template
+# 
+# This reusable workflow template builds and tests .NET applications with configurable parameters.
+# Supports multiple .NET versions, custom build configurations, and flexible test execution.
+#
+# Usage:
+#   1. Reference this template in your workflow
+#   2. Configure the required and optional parameters
+#   3. Template handles restore, build, and test steps automatically
+#
+# Parameters:
+#   - dotnet-version: .NET version to use (required)
+#   - build-configuration: Build configuration (default: Release)
+#   - solution-path: Path to solution file (default: ./)
+#   - test-results-path: Path for test results (default: TestResults/)
+#   - enable-code-coverage: Enable code coverage collection (default: true)
+
+name: .NET Build and Test
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET version to use for build and test'
+        required: true
+        type: string
+      build-configuration:
+        description: 'Build configuration (Debug/Release)'
+        required: false
+        type: string
+        default: 'Release'
+      solution-path:
+        description: 'Path to the solution file or project directory'
+        required: false
+        type: string
+        default: './'
+      test-results-path:
+        description: 'Path where test results will be stored'
+        required: false
+        type: string
+        default: 'TestResults/'
+      enable-code-coverage:
+        description: 'Enable code coverage collection'
+        required: false
+        type: boolean
+        default: true
+      run-tests:
+        description: 'Whether to run tests'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Checkout repository code
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    # Setup .NET environment with specified version
+    - name: Setup .NET ${{ inputs.dotnet-version }}
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ inputs.dotnet-version }}
+        
+    # Display .NET information for debugging
+    - name: Display .NET info
+      run: dotnet --info
+      
+    # Restore NuGet packages
+    - name: Restore dependencies
+      run: dotnet restore ${{ inputs.solution-path }}
+      
+    # Build the solution/project
+    - name: Build solution
+      run: dotnet build ${{ inputs.solution-path }} --configuration ${{ inputs.build-configuration }} --no-restore
+      
+    # Run tests if enabled
+    - name: Run tests
+      if: ${{ inputs.run-tests }}
+      run: |
+        if [ "${{ inputs.enable-code-coverage }}" = "true" ]; then
+          dotnet test ${{ inputs.solution-path }} \
+            --configuration ${{ inputs.build-configuration }} \
+            --no-build \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ${{ inputs.test-results-path }}
+        else
+          dotnet test ${{ inputs.solution-path }} \
+            --configuration ${{ inputs.build-configuration }} \
+            --no-build \
+            --verbosity normal \
+            --results-directory ${{ inputs.test-results-path }}
+        fi
+        
+    # Upload test results
+    - name: Upload test results
+      if: ${{ inputs.run-tests && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-${{ inputs.dotnet-version }}
+        path: ${{ inputs.test-results-path }}
+        
+    # Upload code coverage if enabled
+    - name: Upload code coverage
+      if: ${{ inputs.run-tests && inputs.enable-code-coverage && always() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: code-coverage-${{ inputs.dotnet-version }}
+        path: ${{ inputs.test-results-path }}/**/*.xml
